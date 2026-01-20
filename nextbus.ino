@@ -353,8 +353,15 @@ void processJSON(String json) {
     for (JsonObject dep : departures) {
         String dir = dep["direction"].as<String>();
         
-        if (dir.indexOf(config.direction) >= 0) {
+        // Gör både direction och söksträng lowercase för case-insensitive matchning
+        String dirLower = dir;
+        dirLower.toLowerCase();
+        String searchLower = String(config.direction);
+        searchLower.toLowerCase();
+        
+        if (dirLower.indexOf(searchLower) >= 0) {
             busInfo.departureTime = dep["time"].as<String>();
+            busInfo.destination = dir; // Spara hela destinationen
             foundMatch = true;
             
             if (dep.containsKey("rtTime")) {
@@ -365,13 +372,15 @@ void processJSON(String json) {
                 busInfo.delayMinutes = (h2 * 60 + m2) - (h1 * 60 + m1);
                 if (busInfo.delayMinutes > 0) busInfo.isDelayed = true;
             }
-            debugMsg = "Match! Tid: " + busInfo.departureTime;
+            debugMsg = "Match! " + dir;
             break; 
         }
     }
     
-    if (!foundMatch) {
-        debugMsg = "Ingen match. Forsta dest: " + departures[0]["direction"].as<String>();
+    if (!foundMatch && departures.size() > 0) {
+        debugMsg = "Ingen match. Forsta: " + departures[0]["direction"].as<String>();
+    } else if (!foundMatch) {
+        debugMsg = "Inga avgångar";
     }
     
     displayBus();
