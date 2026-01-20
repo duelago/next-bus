@@ -378,9 +378,38 @@ void processJSON(String json) {
     }
     
     if (!foundMatch && departures.size() > 0) {
-        debugMsg = "Ingen match. Forsta: " + departures[0]["direction"].as<String>();
+        // Visa första tillgängliga destinationen istället
+        JsonObject firstDep = departures[0];
+        String firstDir = firstDep["direction"].as<String>();
+        
+        debugMsg = "Ingen match for '" + String(config.direction) + "'";
+        
+        // Visa felmeddelande på skärmen
+        tft.fillScreen(0xF800); // Röd bakgrund för fel
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(TFT_WHITE, 0xF800);
+        tft.setTextSize(1);
+        tft.drawString("Destination", 120, 40, 2);
+        tft.drawString("finns ej!", 120, 65, 2);
+        
+        tft.setTextColor(TFT_YELLOW, 0xF800);
+        tft.drawString("Sokte:", 120, 100, 2);
+        String shortSearch = String(config.direction);
+        if (shortSearch.length() > 20) shortSearch = shortSearch.substring(0, 20);
+        tft.drawString(shortSearch, 120, 125, 2);
+        
+        tft.drawString("Forsta buss gar till:", 120, 160, 1);
+        String shortDir = firstDir;
+        if (shortDir.length() > 30) shortDir = shortDir.substring(0, 30);
+        tft.drawString(shortDir, 120, 180, 1);
+        tft.drawString("Andra webben!", 120, 210, 2);
+        
+        return; // Avbryt här, visa inte busInfo
+        
     } else if (!foundMatch) {
         debugMsg = "Inga avgångar";
+        displayBus(); // Visa "Inga bussar"
+        return;
     }
     
     displayBus();
@@ -438,6 +467,7 @@ void loop() {
     static unsigned long lastUpdate = 0;
     static bool firstRun = true;
     static bool useHTTP = false; // Fallback till HTTP om HTTPS misslyckas
+    static int failCount = 0; // Räkna misslyckade försök
     
     server.handleClient();
     ElegantOTA.loop();
@@ -453,8 +483,11 @@ void loop() {
             
             String data = fetchBusData();
             if (data != "") {
+                failCount = 0; // Återställ räknare vid lyckad hämtning
                 processJSON(data);
             } else {
+                failCount++;
+                
                 // Om HTTPS misslyckades, försök HTTP nästa gång
                 if (!useHTTP && httpStatus < 0) {
                     useHTTP = true;
@@ -473,6 +506,16 @@ void loop() {
                 tft.drawString(shortDebug, 120, 120, 1);
                 tft.drawString("HTTP: " + String(httpStatus), 120, 140, 1);
                 tft.drawString("Forsoker om 10 min", 120, 160, 1);
+                tft.drawString("Misslyckanden: " + String(failCount), 120, 180, 1);
+                
+                // Om det misslyckas 5 gånger i rad, starta om ESP
+                if (failCount >= 5) {
+                    tft.fillScreen(0xF800);
+                    tft.drawString("For manga fel!", 120, 100, 2);
+                    tft.drawString("Startar om...", 120, 130, 2);
+                    delay(3000);
+                    ESP.restart();
+                }
             }
         } else {
             debugMsg = "WiFi ej ansluten";
@@ -480,6 +523,13 @@ void loop() {
             tft.setTextDatum(MC_DATUM);
             tft.setTextColor(TFT_WHITE, DARK_PINK);
             tft.drawString("WiFi Fel", 120, 120, 4);
+            
+            failCount++;
+            if (failCount >= 5) {
+                tft.drawString("Startar om...", 120, 160, 2);
+                delay(3000);
+                ESP.restart();
+            }
         }
     }
     yield();
