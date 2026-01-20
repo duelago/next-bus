@@ -25,6 +25,9 @@ struct BusData {
     bool isDelayed;
 } busInfo; 
 
+String debugMsg = "Startar...";
+int httpStatus = 0; 
+
 #define EEPROM_SIZE 256 
 
 struct Config {
@@ -100,6 +103,13 @@ void handleRoot() {
     page.replace("%IP%", WiFi.localIP().toString());
     page.replace("%TIME%", busInfo.departureTime != "" ? busInfo.departureTime : "Inga fler");
     page.replace("%DELAY%", busInfo.isDelayed ? "(FÖRSENAD)" : "");
+    
+    String fullDebug = debugMsg + "<br>Key len: " + String(strlen(config.api_key)) + 
+                       "<br>Stop len: " + String(strlen(config.stop_id)) +
+                       "<br>Dir len: " + String(strlen(config.direction));
+    
+    page.replace("%DEBUG%", fullDebug);
+    page.replace("%HTTPSTATUS%", String(httpStatus));
     page.replace("%APIKEY%", String(config.api_key));
     page.replace("%STOPID%", String(config.stop_id));
     page.replace("%DIR%", String(config.direction));
@@ -133,24 +143,133 @@ void handleSave() {
 }
 
 String fetchBusData() {
-    if (strlen(config.api_key) < 5) return "";
+    if (strlen(config.api_key) < 5) {
+        debugMsg = "API nyckel for kort";
+        httpStatus = 0;
+        return "";
+    }
+    
+    debugMsg = "Ansluter...";
     
     WiFiClientSecure client;
-    client.setInsecure(); 
+    client.setInsecure();
+    
     HTTPClient http;
+    
+    // 2 bussar men längre duration för landsbygd
     String url = "https://api.resrobot.se/v2.1/departureBoard?id=" + String(config.stop_id) + 
                  "&format=json&accessId=" + String(config.api_key) + 
-                 "&passlist=0&maxJourneys=5&duration=480";
+                 "&maxJourneys=2&duration=720"; // 12 timmar framåt
     
-    if (http.begin(client, url)) {
-        int httpCode = http.GET();
-        if (httpCode == 200) {
-            String payload = http.getString();
-            http.end();
-            return payload;
-        }
-        http.end();
+    http.setTimeout(20000); // Längre timeout
+    
+    if (!http.begin(client, url)) {
+        debugMsg = "Begin misslyckades";
+        httpStatus = -1;
+        return "";
     }
+    
+    debugMsg = "Skickar...";
+    httpStatus = http.GET();
+    
+    debugMsg = "Svar: " + String(httpStatus);
+    
+    if (httpStatus == 200) {
+        debugMsg = "Läser data...";
+        
+        // Kontrollera content length
+        int len = http.getSize();
+        debugMsg = "Size: " + String(len);
+        
+        if (len <= 0 && len != -1) {
+            http.end();
+            debugMsg = "Content length 0";
+            return "";
+        }
+        
+        // Läs med WiFiClient stream istället för getString()
+        WiFiClient * stream = http.getStreamPtr();
+        String payload = "";
+        payload.reserve(4096); // Pre-allokera minne
+        
+        unsigned long timeout = millis();
+        while (http.connected() && (len > 0 || len == -1)) {
+            size_t size = stream->available();
+            
+            if (size) {
+                // Läs i mindre bitar
+                char buff[128];
+                int c = stream->readBytes(buff, min((size_t)sizeof(buff), size));
+                payload.concat(buff, c);
+                
+                if (len > 0) {
+                    len -= c;
+                }
+                timeout = millis();
+            }
+            
+            // Timeout efter 10 sekunder utan data
+            if (millis() - timeout > 10000) {
+                debugMsg = "Timeout vid läsning";
+                http.end();
+                return "";
+            }
+            
+            // Avbryt om vi redan har tillräckligt med data (first 2 busses)
+            if (payload.length() > 3000 && payload.indexOf("\"Departure\":[") > 0) {
+                // Försök hitta slutet av andra bussen
+                int firstBracket = payload.indexOf("{\"JourneyDetailRef\"");
+                if (firstBracket > 0) {
+                    int secondBracket = payload.indexOf("{\"JourneyDetailRef\"", firstBracket + 20);
+                    if (secondBracket > 0) {
+                        // Hitta slutet av andra objektet
+                        int endBracket = payload.indexOf("},", secondBracket);
+                        if (endBracket > secondBracket + 200) {
+                            break; // Vi har tillräckligt
+                        }
+                    }
+                }
+            }
+            
+            yield();
+        }
+        
+        http.end();
+        
+        if (payload.length() == 0) {
+            debugMsg = "Tom efter läsning!";
+            return "";
+        }
+        
+        debugMsg = "OK! " + String(payload.length()) + "b";
+        return payload;
+        
+    } else if (httpStatus == 301 || httpStatus == 302) {
+        debugMsg = "Redirect fel";
+        
+    } else if (httpStatus == 401) {
+        debugMsg = "401 - Fel API-nyckel";
+    } else if (httpStatus == 404) {
+        debugMsg = "404 - Fel Station ID";
+    } else if (httpStatus == -1) {
+        debugMsg = "Anslutning misslyckades";
+    } else if (httpStatus == -2) {
+        debugMsg = "Stream write fel";
+    } else if (httpStatus == -3) {
+        debugMsg = "Lost connection";
+    } else if (httpStatus == -4) {
+        debugMsg = "No stream";
+    } else if (httpStatus == -5) {
+        debugMsg = "Connection timeout";
+    } else if (httpStatus == -11) {
+        debugMsg = "Read timeout";
+    } else if (httpStatus < 0) {
+        debugMsg = "Fel: " + String(httpStatus);
+    } else {
+        debugMsg = "HTTP: " + String(httpStatus);
+    }
+    
+    http.end();
     return "";
 }
 
@@ -161,8 +280,8 @@ void displayBus() {
 
     tft.setTextColor(TFT_WHITE, bgColor);
     tft.setTextSize(1);
-    tft.drawString("Nasta buss", 120, 40, 4);
-    tft.drawString("-> " + String(config.direction), 120, 75, 2);
+    tft.drawString("Nasta buss", 120, 30, 4);
+    tft.drawString("-> " + String(config.direction), 120, 65, 2);
 
     if (busInfo.departureTime != "") {
         String displayTime = busInfo.isDelayed ? busInfo.rtDepartureTime : busInfo.departureTime;
@@ -170,29 +289,46 @@ void displayBus() {
         
         tft.setTextColor(TFT_BLACK, bgColor);
         tft.setTextSize(1); 
-        tft.drawString(displayTime, 120, 145, 6); 
+        tft.drawString(displayTime, 120, 125, 6); 
         
         if (busInfo.isDelayed) {
             tft.setTextColor(TFT_WHITE, bgColor);
             tft.setTextSize(1);
-            tft.drawString("FORSENAD +" + String(busInfo.delayMinutes) + "m", 120, 215, 4);
+            tft.drawString("FORSENAD +" + String(busInfo.delayMinutes) + "m", 120, 195, 4);
         }
     } else {
         tft.setTextColor(TFT_WHITE, bgColor);
-        tft.drawString("Inga bussar", 120, 145, 4);
+        tft.drawString("Inga bussar", 120, 125, 4);
     }
+    
+    // Debug info längst ner
+    tft.setTextColor(TFT_YELLOW, bgColor);
+    tft.setTextSize(1);
+    String shortDebug = debugMsg;
+    if (shortDebug.length() > 30) shortDebug = shortDebug.substring(0, 30);
+    tft.drawString(shortDebug, 120, 220, 1);
 }
 
 void processJSON(String json) {
-    DynamicJsonDocument doc(8192);
+    DynamicJsonDocument doc(16384); // Ökat från 8192 till 16384 bytes
     DeserializationError error = deserializeJson(doc, json);
-    if (error) return;
+    if (error) {
+        debugMsg = "JSON fel: " + String(error.c_str());
+        
+        tft.fillScreen(DARK_PINK);
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(TFT_WHITE, DARK_PINK);
+        tft.drawString("JSON Parse Fel", 120, 100, 2);
+        tft.drawString(String(error.c_str()), 120, 130, 1);
+        return;
+    }
 
     struct tm timeinfo;
     time_t now = time(nullptr);
     localtime_r(&now, &timeinfo);
     
     if (isNightMode(timeinfo.tm_hour, timeinfo.tm_min)) {
+        debugMsg = "Nattlage aktivt";
         setBrightness(0); 
         tft.fillScreen(TFT_BLACK); 
         return;
@@ -205,14 +341,22 @@ void processJSON(String json) {
     busInfo.isDelayed = false;
 
     if (departures.isNull()) {
+        debugMsg = "Inga avgångar i JSON";
         displayBus();
         return;
     }
 
+    int depCount = departures.size();
+    debugMsg = String(depCount) + " avgångar, soker: " + String(config.direction);
+    
+    bool foundMatch = false;
     for (JsonObject dep : departures) {
         String dir = dep["direction"].as<String>();
+        
         if (dir.indexOf(config.direction) >= 0) {
             busInfo.departureTime = dep["time"].as<String>();
+            foundMatch = true;
+            
             if (dep.containsKey("rtTime")) {
                 busInfo.rtDepartureTime = dep["rtTime"].as<String>();
                 int h1, m1, h2, m2;
@@ -221,9 +365,15 @@ void processJSON(String json) {
                 busInfo.delayMinutes = (h2 * 60 + m2) - (h1 * 60 + m1);
                 if (busInfo.delayMinutes > 0) busInfo.isDelayed = true;
             }
+            debugMsg = "Match! Tid: " + busInfo.departureTime;
             break; 
         }
     }
+    
+    if (!foundMatch) {
+        debugMsg = "Ingen match. Forsta dest: " + departures[0]["direction"].as<String>();
+    }
+    
     displayBus();
 }
 
@@ -270,26 +420,57 @@ void setup() {
     server.begin();
     
     tft.fillScreen(DARK_PINK);
-    tft.drawString("Klar!", 120, 120, 4);
-    delay(2000);
-    
-    // Hämta direkt vid start
-    if (WiFi.status() == WL_CONNECTED) {
-        String data = fetchBusData();
-        if (data != "") processJSON(data);
-    }
+    tft.setTextColor(TFT_WHITE);
+    tft.drawString("Hamtar data...", 120, 120, 2);
+    // Låt loop() hantera första hämtningen
 }
 
 void loop() {
     static unsigned long lastUpdate = 0;
+    static bool firstRun = true;
+    static bool useHTTP = false; // Fallback till HTTP om HTTPS misslyckas
+    
     server.handleClient();
     ElegantOTA.loop();
 
-    if (millis() - lastUpdate >= 600000 || lastUpdate == 0) {
+    if (firstRun || millis() - lastUpdate >= 600000) {
+        firstRun = false;
         lastUpdate = millis();
+        
         if (WiFi.status() == WL_CONNECTED) {
+            // Visa WiFi-styrka
+            int rssi = WiFi.RSSI();
+            debugMsg = "WiFi: " + String(rssi) + "dBm";
+            
             String data = fetchBusData();
-            if (data != "") processJSON(data);
+            if (data != "") {
+                processJSON(data);
+            } else {
+                // Om HTTPS misslyckades, försök HTTP nästa gång
+                if (!useHTTP && httpStatus < 0) {
+                    useHTTP = true;
+                    debugMsg += " Provar HTTP...";
+                }
+                
+                tft.fillScreen(DARK_PINK);
+                tft.setTextDatum(MC_DATUM);
+                tft.setTextColor(TFT_WHITE, DARK_PINK);
+                tft.drawString("API Fel", 120, 80, 4);
+                tft.setTextColor(TFT_YELLOW, DARK_PINK);
+                tft.setTextSize(1);
+                
+                String shortDebug = debugMsg;
+                if (shortDebug.length() > 35) shortDebug = shortDebug.substring(0, 35);
+                tft.drawString(shortDebug, 120, 120, 1);
+                tft.drawString("HTTP: " + String(httpStatus), 120, 140, 1);
+                tft.drawString("Forsoker om 10 min", 120, 160, 1);
+            }
+        } else {
+            debugMsg = "WiFi ej ansluten";
+            tft.fillScreen(DARK_PINK);
+            tft.setTextDatum(MC_DATUM);
+            tft.setTextColor(TFT_WHITE, DARK_PINK);
+            tft.drawString("WiFi Fel", 120, 120, 4);
         }
     }
     yield();
