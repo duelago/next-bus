@@ -10,7 +10,7 @@
 #include <time.h>
 
 // ===================== FÄRGER =====================
-#define DARK_PINK 0xC318
+#define DARK_PINK 0x4B00
 #define DELAY_RED 0xF800
 
 #define TFT_BL 5
