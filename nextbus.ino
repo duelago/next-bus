@@ -379,7 +379,7 @@ input[type="radio"] {
   </form>
   
   <div class="info-text">
-    ℹ️ API:et kollas var 5:e minut. Senaste uppdatering visas på displayen.
+    ℹ️ API:et kollas varannan minut. Senaste uppdatering visas på displayen.
   </div>
   
   <a href="/update" class="link">⚙️ OTA Firmware Update</a>
@@ -480,7 +480,7 @@ void loop() {
     server.handleClient();
     ElegantOTA.loop();
 
-    if (millis() - last > 300000) {
+    if (millis() - last > 120000) {
         last = millis();
         if (fetchBus()) {
             displayBus();
