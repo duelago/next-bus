@@ -42,7 +42,7 @@ struct Config {
     uint8_t night_end_hour;
     uint8_t night_end_minute;
     uint8_t bri;
-    uint8_t duration_mode; // 0=mycket få, 1=få, 2=många, 3=väldigt många
+    uint8_t duration_mode;
 } config;
 
 // ===================== LJUS =====================
@@ -51,6 +51,23 @@ void setBrightness(uint8_t val) {
 }
 
 // ===================== TID =====================
+bool isNightMode() {
+    if (!config.night_mode_enabled) return false;
+    
+    time_t now = time(nullptr);
+    struct tm* t = localtime(&now);
+    
+    int currentMinutes = t->tm_hour * 60 + t->tm_min;
+    int startMinutes = config.night_start_hour * 60 + config.night_start_minute;
+    int endMinutes = config.night_end_hour * 60 + config.night_end_minute;
+    
+    if (startMinutes < endMinutes) {
+        return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    } else {
+        return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+}
+
 int minutesUntil(const char* date, const char* timeStr) {
     struct tm t = {};
     t.tm_year = atoi(date) - 1900;
@@ -73,11 +90,10 @@ bool fetchBus() {
     http.setTimeout(15000);
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
-    // Durations baserat på användarvald nivå
-    int durations[] = {5, 20, 60, 180}; // mycket få, få, många, väldigt många
+    int durations[] = {5, 20, 60, 180};
     uint8_t mode = config.duration_mode > 3 ? 3 : config.duration_mode;
     int primaryDuration = durations[mode];
-    int fallbackDuration = 720; // alltid 12h som fallback
+    int fallbackDuration = 720;
 
     auto fetchOnce = [&](int durationMinutes) -> bool {
         String url =
@@ -87,7 +103,7 @@ bool fetchBus() {
             "&accessId=" + String(config.api_key) +
             "&maxJourneys=15"
             "&duration=" + String(durationMinutes) +
-            "&passlist=0"; // VIKTIGT: Minskar datamängd rejält!
+            "&passlist=0";
 
         if (!http.begin(client, url)) {
             debugMsg = "HTTP begin fail";
@@ -103,8 +119,6 @@ bool fetchBus() {
             return false;
         }
 
-        // ========== STREAMING MED FILTER ==========
-        // Vi filtrerar bort allt utom det vi behöver INNAN parsing
         WiFiClient* stream = http.getStreamPtr();
         
         StaticJsonDocument<200> filter;
@@ -113,7 +127,7 @@ bool fetchBus() {
         filter["Departure"][0]["rtTime"] = true;
         filter["Departure"][0]["direction"] = true;
 
-        DynamicJsonDocument doc(3072); // 3KB räcker nu med filter
+        DynamicJsonDocument doc(3072);
         DeserializationError err = deserializeJson(doc, *stream, DeserializationOption::Filter(filter));
         http.end();
 
@@ -151,7 +165,6 @@ bool fetchBus() {
         }
     };
 
-    // Försök först med användarens val, sen fallback till 12h
     if (fetchOnce(primaryDuration)) return true;
     if (fetchOnce(fallbackDuration)) return true;
 
@@ -175,6 +188,11 @@ void displayBus() {
 
     tft.setTextSize(1);
     tft.drawString(debugMsg, 120, 220, 1);
+}
+
+void displayNightMode() {
+    tft.fillScreen(TFT_BLACK);
+    setBrightness(0);
 }
 
 // ===================== WEB =====================
@@ -236,6 +254,16 @@ h2 {
   font-weight: bold;
   margin-left: 10px;
 }
+.night-badge {
+  display: inline-block;
+  background: #333;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-left: 10px;
+}
 label {
   display: block;
   margin-top: 15px;
@@ -244,7 +272,7 @@ label {
   font-weight: 600;
   font-size: 14px;
 }
-input[type="text"], input[type="number"] {
+input[type="text"], input[type="number"], input[type="time"] {
   width: 100%;
   padding: 12px;
   border: 2px solid #e0e0e0;
@@ -252,9 +280,35 @@ input[type="text"], input[type="number"] {
   font-size: 16px;
   transition: border 0.3s;
 }
-input[type="text"]:focus, input[type="number"]:focus {
+input[type="text"]:focus, input[type="number"]:focus, input[type="time"]:focus {
   outline: none;
   border-color: #667eea;
+}
+.checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  margin: 10px 0;
+}
+input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+.checkbox-wrapper label {
+  margin: 0;
+  cursor: pointer;
+  font-weight: 500;
+}
+.time-row {
+  display: flex;
+  gap: 10px;
+}
+.time-row > div {
+  flex: 1;
 }
 .radio-group {
   margin: 15px 0;
@@ -333,12 +387,12 @@ input[type="radio"] {
 </head>
 <body>
 <div class="container">
-  <h2>🚌 Bus Display</h2>
+  <h2>🚌 Nästa avgångstid</h2>
   
   <div class="status">
     <p>IP-adress</p>
     <strong>%IP%</strong>
-    <p style="margin-top:10px">Nästa buss%DELAY_BADGE%</p>
+    <p style="margin-top:10px">Nästa buss%DELAY_BADGE%%NIGHT_BADGE%</p>
     <strong>%TIME%</strong>
   </div>
 
@@ -375,6 +429,23 @@ input[type="radio"] {
       </div>
     </div>
     
+    <label>🌙 Nattläge</label>
+    <div class="checkbox-wrapper">
+      <input type="checkbox" name="night" id="night" value="1" %NIGHT_CHECKED%>
+      <label for="night">Aktivera nattläge (stäng av display & API-anrop)</label>
+    </div>
+    
+    <div class="time-row">
+      <div>
+        <label>Start tid</label>
+        <input type="time" name="nightstart" value="%NIGHT_START%" required>
+      </div>
+      <div>
+        <label>Slut tid</label>
+        <input type="time" name="nightend" value="%NIGHT_END%" required>
+      </div>
+    </div>
+    
     <button type="submit" class="btn">💾 Spara inställningar</button>
   </form>
   
@@ -397,7 +468,14 @@ void handleRoot() {
     page.replace("%DIR%", config.direction);
     page.replace("%BRI%", String(config.bri));
     
-    // Färgtema baserat på förseningsstatus
+    // Nattläge badges
+    if (isNightMode()) {
+        page.replace("%NIGHT_BADGE%", "<span class=\"night-badge\">🌙 NATTLÄGE</span>");
+    } else {
+        page.replace("%NIGHT_BADGE%", "");
+    }
+    
+    // Färgtema
     if (busInfo.isDelayed) {
         page.replace("%GRADIENT%", "#ff4444 0%, #cc0000 100%");
         page.replace("%STATUS_BG%", "#ffe6e6");
@@ -418,6 +496,16 @@ void handleRoot() {
         page.replace(tag, (config.duration_mode == i) ? "checked" : "");
     }
     
+    // Nattläge checkbox & tider
+    page.replace("%NIGHT_CHECKED%", config.night_mode_enabled ? "checked" : "");
+    
+    char timeStr[6];
+    snprintf(timeStr, sizeof(timeStr), "%02d:%02d", config.night_start_hour, config.night_start_minute);
+    page.replace("%NIGHT_START%", timeStr);
+    
+    snprintf(timeStr, sizeof(timeStr), "%02d:%02d", config.night_end_hour, config.night_end_minute);
+    page.replace("%NIGHT_END%", timeStr);
+    
     server.send(200, "text/html", page);
 }
 
@@ -427,6 +515,17 @@ void handleSave() {
     strlcpy(config.direction, server.arg("dir").c_str(), sizeof(config.direction));
     config.bri = server.arg("bri").toInt();
     config.duration_mode = server.arg("mode").toInt();
+    
+    // Nattläge
+    config.night_mode_enabled = server.hasArg("night");
+    
+    String nightStart = server.arg("nightstart");
+    config.night_start_hour = nightStart.substring(0, 2).toInt();
+    config.night_start_minute = nightStart.substring(3, 5).toInt();
+    
+    String nightEnd = server.arg("nightend");
+    config.night_end_hour = nightEnd.substring(0, 2).toInt();
+    config.night_end_minute = nightEnd.substring(3, 5).toInt();
     
     EEPROM.put(0, config);
     EEPROM.commit();
@@ -452,7 +551,12 @@ void setup() {
         strlcpy(config.stop_id, "740001149", sizeof(config.stop_id));
         strlcpy(config.direction, "Ystad", sizeof(config.direction));
         config.bri = 200;
-        config.duration_mode = 0; // Default: mycket få avgångar
+        config.duration_mode = 0;
+        config.night_mode_enabled = false;
+        config.night_start_hour = 23;
+        config.night_start_minute = 0;
+        config.night_end_hour = 6;
+        config.night_end_minute = 0;
         EEPROM.put(0, config);
         EEPROM.commit();
     }
@@ -462,25 +566,44 @@ void setup() {
     WiFiManager wm;
     wm.autoConnect("BusDisplay");
 
-    configTime(3600, 3600, "pool.ntp.org");
+    configTime(3600, 3600, "se.pool.ntp.org", "pool.ntp.org");
 
     server.on("/", handleRoot);
     server.on("/save", handleSave);
     ElegantOTA.begin(&server);
     server.begin();
 
-    // 🔹 Gör första hämtningen direkt
-    if (fetchBus()) displayBus();
+    // Första hämtningen
+    if (!isNightMode()) {
+        if (fetchBus()) displayBus();
+    } else {
+        displayNightMode();
+    }
 }
 
 // ===================== LOOP =====================
 void loop() {
     static unsigned long last = 0;
+    static bool wasNightMode = false;
 
     server.handleClient();
     ElegantOTA.loop();
 
-    if (millis() - last > 120000) {
+    bool nightNow = isNightMode();
+    
+    // Lägesväxling
+    if (nightNow != wasNightMode) {
+        wasNightMode = nightNow;
+        if (nightNow) {
+            displayNightMode();
+        } else {
+            setBrightness(config.bri);
+            if (fetchBus()) displayBus();
+        }
+    }
+
+    // Normal uppdatering (endast när inte nattläge)
+    if (!nightNow && millis() - last > 120000) {
         last = millis();
         if (fetchBus()) {
             displayBus();
