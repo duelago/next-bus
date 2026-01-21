@@ -22,6 +22,7 @@ struct BusData {
     String departureTime;
     String rtDepartureTime;
     String destination;
+    String lineNumber;
     int delayMinutes;
     bool isDelayed;
     bool farAway;
@@ -126,6 +127,7 @@ bool fetchBus() {
         filter["Departure"][0]["time"] = true;
         filter["Departure"][0]["rtTime"] = true;
         filter["Departure"][0]["direction"] = true;
+        filter["Departure"][0]["ProductAtStop"]["displayNumber"] = true;
 
         DynamicJsonDocument doc(3072);
         DeserializationError err = deserializeJson(doc, *stream, DeserializationOption::Filter(filter));
@@ -150,6 +152,7 @@ bool fetchBus() {
 
                     busInfo.departureTime = timeStr;
                     busInfo.destination  = dep["direction"].as<String>();
+                    busInfo.lineNumber   = dep["ProductAtStop"]["displayNumber"].as<String>();
                     busInfo.isDelayed    = dep.containsKey("rtTime");
                     busInfo.farAway      = minutesUntil(date, timeStr) > 360;
 
@@ -183,7 +186,8 @@ void displayBus() {
     if (busInfo.farAway) {
         tft.drawString("Nästa > 6h", 120, 120, 4);
     } else {
-        tft.drawString(busInfo.departureTime.substring(0, 5), 120, 120, 6);
+        tft.drawString(busInfo.departureTime.substring(0, 5), 120, 100, 6);
+        tft.drawString(busInfo.lineNumber, 120, 150, 4);
     }
 
     tft.setTextSize(1);
