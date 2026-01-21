@@ -415,7 +415,7 @@ input[type="radio"] {
     <label>Hållplats-ID</label>
     <input type="text" name="stopid" value="%STOPID%" required>
     
-    <label>Destination (sökterm)</label>
+    <label>Riktning (Slutdestination för bussen)</label>
     <input type="text" name="dir" value="%DIR%" required>
     
     <label>Ljusstyrka (20-255)</label>
