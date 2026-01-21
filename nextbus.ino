@@ -195,6 +195,14 @@ void displayNightMode() {
     setBrightness(0);
 }
 
+void displayBootInfo(String message) {
+    tft.fillScreen(DARK_PINK);
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(TFT_WHITE, DARK_PINK);
+    tft.setTextSize(1);
+    tft.drawString(message, 120, 120, 2);
+}
+
 // ===================== WEB =====================
 const char html[] PROGMEM = R"(
 <!DOCTYPE html>
@@ -387,7 +395,7 @@ input[type="radio"] {
 </head>
 <body>
 <div class="container">
-  <h2>🚌 Nästa avgångstid</h2>
+  <h2>🚌 Nästa avgång</h2>
   
   <div class="status">
     <p>IP-adress</p>
@@ -450,7 +458,7 @@ input[type="radio"] {
   </form>
   
   <div class="info-text">
-    ℹ️ API:et kollas varannan minut. Senaste uppdatering visas på displayen.
+    ℹ️ API:et kollas varannan minut
   </div>
   
   <a href="/update" class="link">⚙️ OTA Firmware Update</a>
@@ -563,8 +571,16 @@ void setup() {
 
     setBrightness(config.bri);
 
+    displayBootInfo("Startar WiFi...");
+    
     WiFiManager wm;
     wm.autoConnect("BusDisplay");
+
+    displayBootInfo("Ansluten!");
+    delay(1000);
+    
+    displayBootInfo(WiFi.localIP().toString());
+    delay(3000);
 
     configTime(3600, 3600, "se.pool.ntp.org", "pool.ntp.org");
 
