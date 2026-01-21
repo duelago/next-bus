@@ -9,7 +9,8 @@ GeekMagic går inte att programmera via usb-porten. Enklaste sätttet är därf�
 Kör därför först <b>cleaner-firmware.bin</b> och gå in i det nya webinterfacet och välj att rensa EEPROM-inställningarna. I steg två flashar du <b>buss.bin</b><p></p>
 Jag använder WifiManager för att ge enheten en IP-adress och för att lägga till den på ditt wifi-nätverk. Kolla under accesspunkter så dyker enheten upp.<p></p>
 IP-adressen till webinterfacet för att konfigurera enheten syns på bildskärmen under boot. Navigera till denna adress i en browser med http (ej https). Ofta något i stil med http://192.168.1.123 (<- Fast inte exakt så här) 
+<p></p>
 
-
-
+Mjukvaran visar även vilken linje som nästa ankommande buss trafikerar (150 i exemplet här)<br>
+Nattläget sparar på API-anrop och stänger ner skärmen så den blir svart. Det går fortfarande att nå webbinterfacet.
 <img width="907" height="960" alt="vellinge" src="https://github.com/user-attachments/assets/a25df43a-ed15-484c-9ec5-5721656abf2e" />
