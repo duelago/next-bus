@@ -5,7 +5,7 @@ Kräver api-nyckel för ResRobot v2.1 https://developer.trafiklab.se/project/lis
 Sök hållplats-ID här: http://www.windflag.se/buss.php<p>
 
 <h1>Känd begränsning</h1>
-Använd inte skärmen för att visa angångar FRÅN <b>Stockholm Central</b>, <b>Malmö Central</b> och andra riktigt stora knutpunkter. Det är för mycket data för den lille mikrokontrollern. Du kan dock visa en avgång i riktning Malmö Central
+Använd inte skärmen för att visa angångar från <b>Stockholm Central</b>, <b>Malmö Central</b> och andra riktigt stora knutpunkter. Det är för mycket data för den lille mikrokontrollern. Du kan dock visa en avgång i riktning Malmö Central
 
 <h1>Uppdatera din GeekMagic i två steg</h1>
 GeekMagic går inte att programmera via usb-porten. Enklaste sätttet är därför att göra det OTA (over the air) i webbinterfacet. Om du har kört enheten som väderstation måste vi först rensa EEPROM så att enheten blir helt ren och därmed inte blir korrupt. Har du inte kört enheten som väderstation går det bra att flasha korrekt firmware direkt. <p></p>
