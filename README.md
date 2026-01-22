@@ -4,6 +4,9 @@ Visar när nästa buss går på en GeekMagic Ultra https://www.aliexpress.com/it
 Kräver api-nyckel för ResRobot v2.1 https://developer.trafiklab.se/project/list<p>
 Sök hållplats-ID här: http://www.windflag.se/buss.php<p>
 
+<h1>Känd begränsning</h1>
+Använd inte skärmen för att visa <b>Stockholm Central</b>, <b>Malmö Central</b> och andra riktigt stora knutpunkter. Det är för mycket data för den lille mikrokontrollern
+
 <h1>Uppdatera din GeekMagic i två steg</h1>
 GeekMagic går inte att programmera via usb-porten. Enklaste sätttet är därför att göra det OTA (over the air) i webbinterfacet. Om du har kört enheten som väderstation måste vi först rensa EEPROM så att enheten blir helt ren och därmed inte blir korrupt. Har du inte kört enheten som väderstation går det bra att flasha korrekt firmware direkt. <p></p>
 Kör därför först <b>cleaner-firmware.bin</b> och gå in i det nya webinterfacet och välj att rensa EEPROM-inställningarna. I steg två flashar du <b>buss.bin</b><p></p>
