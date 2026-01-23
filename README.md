@@ -9,6 +9,9 @@ Använd inte skärmen för att visa angångar från <b>Stockholm Central</b>, <b
 
 <h1>Uppdatera din GeekMagic i två steg</h1>
 GeekMagic går inte att programmera via usb-porten. Enklaste sätttet är därför att göra det OTA (over the air) i webbinterfacet. Det är lämpligt att först rensa EEPROM så att enheten blir helt ren och därmed inte blir korrupt, samt att vi säkerställer att vi har tillräckligt med plats att ladda upp vår mjukvara.<p></p>
+<img width="491" height="1004" alt="geek-webgui" src="https://github.com/user-attachments/assets/6bc30fb5-1d08-4ccd-9aaf-21ffeb317c6f" />
+<br><i>Första uppdateringen görs alltså i GeekMagis originalinterface som ser ut ungefär så här</i>
+
 Kör därför först <b>cleaner-firmware.bin</b> och gå in i det nya webinterfacet och välj att rensa EEPROM-inställningarna. I steg två flashar du <b>buss.bin</b><p></p>
 Jag använder WifiManager för att ge enheten en IP-adress och för att lägga till den på ditt wifi-nätverk. Kolla under accesspunkter så dyker enheten upp.<p></p>
 IP-adressen till webinterfacet för att konfigurera enheten syns på bildskärmen under boot. Navigera till denna adress i en browser med http (ej https). Ofta något i stil med http://192.168.1.123 (<- Fast inte exakt så här) 
