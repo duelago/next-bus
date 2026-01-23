@@ -16,7 +16,7 @@ IP-adressen till webinterfacet för att konfigurera enheten syns på bildskärme
 <h1>Webbinterfacet</h1>
 Fyll i din <b></b>api-nyckel</b> som du skaffat dig via <b>ResRobot</b>.<p>
 Därefter skriver du in din stations <b>HållplatsID</b> som är ett nummer. Jag har byggt en webbplats som det länkas till i Webbinterfacet där du kan hitta ID till din hållplats<p>
-  Sen behöver vi veta i vilken riktning du reser. Har bussen slutdestination Ystad så är det orten du matar in som <b></b>destination</b></p></p>
+  Sen behöver vi veta i vilken riktning du reser. Har bussen slutdestination Ystad så är det orten du matar in som <b>destination</b></p></p>
   Mjukvaran visar när nästa buss även vilken linje som nästa ankommande buss trafikerar (150 i exemplet här)<br>
 Nattläget sparar på API-anrop och stänger ner skärmen så den blir svart. Det går fortfarande att nå webbinterfacet.
 <img width="907" height="960" alt="vellinge" src="https://github.com/user-attachments/assets/a25df43a-ed15-484c-9ec5-5721656abf2e" />
