@@ -383,6 +383,18 @@ input[type="radio"] {
 .link:hover {
   text-decoration: underline;
 }
+.helper-link {
+  display: inline-block;
+  margin-top: 5px;
+  margin-bottom: 10px;
+  color: #667eea;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+}
+.helper-link:hover {
+  text-decoration: underline;
+}
 .info-text {
   font-size: 13px;
   color: #666;
@@ -414,6 +426,7 @@ input[type="radio"] {
     
     <label>Hållplats-ID</label>
     <input type="text" name="stopid" value="%STOPID%" required>
+    <a href="http://www.windflag.se/buss.php" target="_blank" class="helper-link">📍 Hitta hållplats ID här</a>
     
     <label>Riktning (Slutdestination för bussen)</label>
     <input type="text" name="dir" value="%DIR%" required>
