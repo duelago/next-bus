@@ -1,3 +1,6 @@
+// https://oebb.macistry.com/api/stops/1350662/departures?bus=true&direction=596051&results=2
+
+
 #include <ESP8266WiFi.h>
 #include <WiFiManager.h>
 #include <ESP8266HTTPClient.h>
@@ -20,7 +23,7 @@ ESP8266WebServer server(80);
 // ===================== DATA =====================
 struct BusData {
     String departureTime;
-    String rtDepartureTime;
+    String secondDepartureTime;
     String destination;
     String lineNumber;
     int delayMinutes;
@@ -28,7 +31,7 @@ struct BusData {
     bool farAway;
 } busInfo;
 
-String debugMsg = "Startar...";
+String debugMsg = "Starting...";
 int httpStatus = 0;
 
 #define EEPROM_SIZE 256
@@ -131,59 +134,73 @@ bool fetchBus() {
 
     JsonArray departures = doc["departures"];
     if (!departures.isNull() && departures.size() > 0) {
-        // Filter for "Bus SKI" only
-        JsonObject skiBus;
-        bool found = false;
+        // Filter for "Bus SKI" only - get first two
+        JsonObject firstSkiBus, secondSkiBus;
+        bool foundFirst = false;
+        bool foundSecond = false;
         
         for (JsonObject dep : departures) {
             String lineName = dep["line"]["name"].as<String>();
             if (lineName == "Bus SKI") {
-                skiBus = dep;
-                found = true;
-                break;
+                if (!foundFirst) {
+                    firstSkiBus = dep;
+                    foundFirst = true;
+                } else if (!foundSecond) {
+                    secondSkiBus = dep;
+                    foundSecond = true;
+                    break;
+                }
             }
         }
         
-        if (!found) {
-            debugMsg = "Ingen Bus SKI";
-            busInfo.departureTime = "Ingen Bus SKI";
+        if (!foundFirst) {
+            debugMsg = "No Bus SKI";
+            busInfo.departureTime = "No Bus SKI";
+            busInfo.secondDepartureTime = "--:--";
             busInfo.farAway = false;
             return true;
         }
         
-        const char* whenStr = skiBus["when"];
-        const char* plannedWhenStr = skiBus["plannedWhen"];
+        // Process first bus
+        const char* whenStr = firstSkiBus["when"];
+        const char* plannedWhenStr = firstSkiBus["plannedWhen"];
         
-        // Extract time from ISO 8601 format
         String when = String(whenStr);
         String plannedWhen = String(plannedWhenStr);
         
-        // Get HH:MM from "2026-01-28T09:46:00+01:00"
         busInfo.departureTime = when.substring(11, 16);
-        busInfo.rtDepartureTime = plannedWhen.substring(11, 16);
-        
-        busInfo.destination = skiBus["direction"].as<String>();
-        busInfo.lineNumber = skiBus["line"]["name"].as<String>();
+        busInfo.destination = firstSkiBus["direction"].as<String>();
+        busInfo.lineNumber = firstSkiBus["line"]["name"].as<String>();
         
         // Check if delayed
-        if (skiBus["delay"].isNull()) {
+        if (firstSkiBus["delay"].isNull()) {
             busInfo.isDelayed = false;
             busInfo.delayMinutes = 0;
         } else {
-            int delaySec = skiBus["delay"].as<int>();
+            int delaySec = firstSkiBus["delay"].as<int>();
             busInfo.delayMinutes = delaySec / 60;
-            busInfo.isDelayed = (delaySec > 60); // Delayed if more than 1 minute
+            busInfo.isDelayed = (delaySec > 60);
         }
         
         // Check if far away (>6 hours)
         int minsUntil = minutesUntil(whenStr);
         busInfo.farAway = minsUntil > 360;
         
-        debugMsg = busInfo.farAway ? "Nästa >6h" : "OK";
+        // Process second bus if found
+        if (foundSecond) {
+            const char* whenStr2 = secondSkiBus["when"];
+            String when2 = String(whenStr2);
+            busInfo.secondDepartureTime = when2.substring(11, 16);
+        } else {
+            busInfo.secondDepartureTime = "--:--";
+        }
+        
+        debugMsg = busInfo.farAway ? "Next >6h" : "OK";
         return true;
     } else {
-        debugMsg = "Inga avgångar";
-        busInfo.departureTime = "Inga bussar";
+        debugMsg = "No departures";
+        busInfo.departureTime = "No buses";
+        busInfo.secondDepartureTime = "--:--";
         busInfo.farAway = false;
         return true;
     }
@@ -197,10 +214,13 @@ void displayBus() {
     tft.setTextColor(TFT_WHITE, bg);
 
     if (busInfo.farAway) {
-        tft.drawString("Nästa > 6h", 120, 120, 4);
+        tft.drawString("Next > 6h", 120, 120, 4);
     } else {
+        // First bus - large
         tft.drawString(busInfo.departureTime, 120, 100, 6);
-        tft.drawString(busInfo.lineNumber, 120, 150, 4);
+        // Second bus - small
+        tft.setTextSize(1);
+        tft.drawString(busInfo.secondDepartureTime, 120, 150, 4);
     }
 
     tft.setTextSize(1);
@@ -394,49 +414,51 @@ input[type="checkbox"] {
 </head>
 <body>
 <div class="container">
-  <h2>🚌 Nästa avgång</h2>
+  <h2>🚌 Next Departure</h2>
   
   <div class="status">
-    <p>IP-adress</p>
+    <p>IP Address</p>
     <strong>%IP%</strong>
-    <p style="margin-top:10px">Nästa buss%DELAY_BADGE%%NIGHT_BADGE%</p>
+    <p style="margin-top:10px">Next Bus%DELAY_BADGE%%NIGHT_BADGE%</p>
     <strong>%TIME%</strong>
+    <p style="margin-top:10px">Following Bus</p>
+    <strong>%TIME2%</strong>
   </div>
 
   <form action="/save">
-    <label>Hållplats-ID (Station ID)</label>
+    <label>Station ID</label>
     <input type="text" name="stopid" value="%STOPID%" required>
-    <a href="https://oebb.macistry.com/api/locations?query=Saalbach" target="_blank" class="helper-link">📍 Hitta hållplats ID här (ändra 'Saalbach' i URL:en)</a>
+    <a href="https://oebb.macistry.com/api/locations?query=Saalbach" target="_blank" class="helper-link">📍 Find station ID here (change 'Saalbach' in the URL)</a>
     
-    <label>Destinations-ID (Direction ID)</label>
+    <label>Destination ID</label>
     <input type="text" name="destid" value="%DESTID%" required>
-    <a href="https://oebb.macistry.com/api/locations?query=Hochalm" target="_blank" class="helper-link">🎯 Hitta destinations ID här (ändra 'Hochalm' i URL:en)</a>
+    <a href="https://oebb.macistry.com/api/locations?query=Hochalm" target="_blank" class="helper-link">🎯 Find destination ID here (change 'Hochalm' in the URL)</a>
     
-    <label>Ljusstyrka (20-255)</label>
+    <label>Brightness (20-255)</label>
     <input type="number" name="bri" value="%BRI%" min="20" max="255" required>
     
-    <label>🌙 Nattläge</label>
+    <label>🌙 Night Mode</label>
     <div class="checkbox-wrapper">
       <input type="checkbox" name="night" id="night" value="1" %NIGHT_CHECKED%>
-      <label for="night">Aktivera nattläge (stäng av display & API-anrop)</label>
+      <label for="night">Enable night mode (turn off display & API calls)</label>
     </div>
     
     <div class="time-row">
       <div>
-        <label>Start tid</label>
+        <label>Start Time</label>
         <input type="time" name="nightstart" value="%NIGHT_START%" required>
       </div>
       <div>
-        <label>Slut tid</label>
+        <label>End Time</label>
         <input type="time" name="nightend" value="%NIGHT_END%" required>
       </div>
     </div>
     
-    <button type="submit" class="btn">💾 Spara inställningar</button>
+    <button type="submit" class="btn">💾 Save Settings</button>
   </form>
   
   <div class="info-text">
-    ℹ️ API:et kollas varannan minut
+    ℹ️ API checked every 2 minutes
   </div>
   
   <a href="/update" class="link">⚙️ OTA Firmware Update</a>
@@ -449,24 +471,25 @@ void handleRoot() {
     String page = FPSTR(html);
     page.replace("%IP%", WiFi.localIP().toString());
     page.replace("%TIME%", busInfo.departureTime);
+    page.replace("%TIME2%", busInfo.secondDepartureTime); // Second bus time
     page.replace("%STOPID%", config.stop_id);
     page.replace("%DESTID%", config.destination_id);
     page.replace("%BRI%", String(config.bri));
     
-    // Nattläge badges
+    // Night mode badges
     if (isNightMode()) {
-        page.replace("%NIGHT_BADGE%", "<span class=\"night-badge\">🌙 NATTLÄGE</span>");
+        page.replace("%NIGHT_BADGE%", "<span class=\"night-badge\">🌙 NIGHT MODE</span>");
     } else {
         page.replace("%NIGHT_BADGE%", "");
     }
     
-    // Färgtema
+    // Color theme
     if (busInfo.isDelayed) {
         page.replace("%GRADIENT%", "#ff4444 0%, #cc0000 100%");
         page.replace("%STATUS_BG%", "#ffe6e6");
         page.replace("%STATUS_BORDER%", "#ff4444");
         page.replace("%STATUS_COLOR%", "#cc0000");
-        page.replace("%DELAY_BADGE%", "<span class=\"delay-badge\">⚠️ FÖRSENAD</span>");
+        page.replace("%DELAY_BADGE%", "<span class=\"delay-badge\">⚠️ DELAYED</span>");
     } else {
         page.replace("%GRADIENT%", "#667eea 0%, #764ba2 100%");
         page.replace("%STATUS_BG%", "#f0f4ff");
@@ -475,7 +498,7 @@ void handleRoot() {
         page.replace("%DELAY_BADGE%", "");
     }
     
-    // Nattläge checkbox & tider
+    // Night mode checkbox & times
     page.replace("%NIGHT_CHECKED%", config.night_mode_enabled ? "checked" : "");
     
     char timeStr[6];
@@ -506,7 +529,7 @@ void handleSave() {
     
     EEPROM.put(0, config);
     EEPROM.commit();
-    server.send(200, "text/plain", "Sparat. Startar om...");
+    server.send(200, "text/plain", "Saved. Restarting...");
     delay(1500);
     ESP.restart();
 }
@@ -539,12 +562,12 @@ void setup() {
 
     setBrightness(config.bri);
 
-    displayBootInfo("Startar WiFi...");
+    displayBootInfo("Starting WiFi...");
     
     WiFiManager wm;
     wm.autoConnect("BusDisplay");
 
-    displayBootInfo("Ansluten!");
+    displayBootInfo("Connected!");
     delay(1000);
     
     displayBootInfo(WiFi.localIP().toString());
