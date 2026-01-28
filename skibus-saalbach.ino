@@ -1,5 +1,4 @@
-// https://oebb.macistry.com/api/stops/1350662/departures?bus=true&direction=596051&results=2
-
+// https://oebb.macistry.com/api/stops/1350662/departures?bus=true&direction=596051&results=10
 
 #include <ESP8266WiFi.h>
 #include <WiFiManager.h>
@@ -98,7 +97,7 @@ bool fetchBus() {
 
     String url =
         "https://oebb.macistry.com/api/stops/" + String(config.stop_id) + 
-        "/departures?bus=true&direction=" + String(config.destination_id) + "&results=5";
+        "/departures?bus=true&direction=" + String(config.destination_id) + "&results=10";
 
     if (!http.begin(client, url)) {
         debugMsg = "HTTP begin fail";
@@ -123,7 +122,7 @@ bool fetchBus() {
     filter["departures"][0]["direction"] = true;
     filter["departures"][0]["line"]["name"] = true;
 
-    DynamicJsonDocument doc(4096);
+    DynamicJsonDocument doc(6144);
     DeserializationError err = deserializeJson(doc, *stream, DeserializationOption::Filter(filter));
     http.end();
 
