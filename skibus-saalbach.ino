@@ -153,7 +153,7 @@ bool fetchBus(int retries = 2) {
 
         String url =
             "https://oebb.macistry.com/api/stops/" + String(config.stop_id) +
-            "/departures?bus=true&direction=" + String(config.destination_id) + "&results=10";
+            "/departures?bus=true&direction=" + String(config.destination_id) + "&results=15";
 
         if (!http.begin(client, url)) {
             debugMsg = "HTTP begin fail";
@@ -439,3 +439,4 @@ void loop() {
         if (fetchBus()) displayBus();
     }
 }
+
