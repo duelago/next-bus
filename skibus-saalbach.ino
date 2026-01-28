@@ -404,15 +404,61 @@ void setup() {
     displayBootInfo(WiFi.localIP().toString());
     delay(3000);
 
-    configTime(3600, 3600, "at.pool.ntp.org", "pool.ntp.org");
+    configTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
+
+    displayBootInfo("Syncing Time...");
+
+    // Check time sync with visual feedback
+    for (int i = 0; i < 6; i++) {
+        delay(500);
+        yield();
+        time_t now = time(nullptr);
+        if (now > 1700000000) {
+            debugMsg = "Time Synced";
+            Serial.println("Time synced! Timestamp: " + String(now));
+            struct tm* timeinfo = localtime(&now);
+            char buffer[30];
+            strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", timeinfo);
+            Serial.println("Current time: " + String(buffer));
+            displayBootInfo("Time Synced!");
+            delay(1000);
+            break;
+        }
+        
+        // Show progress dots
+        String dots = "Syncing Time";
+        for (int j = 0; j <= (i % 4); j++) {
+            dots += ".";
+        }
+        
+        tft.fillScreen(TFT_BLACK);
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(TFT_WHITE, TFT_BLACK);
+        tft.drawString(dots, 120, 120, 2);
+    }
+
+    time_t finalCheck = time(nullptr);
+    if (finalCheck < 1700000000) {
+        config.night_mode_enabled = false; 
+        debugMsg = "Time Sync Failed";
+        Serial.println("Time sync FAILED! Will retry in background");
+        displayBootInfo("Time Sync Failed");
+        delay(1000);
+    }
+
+    displayBootInfo("Starting Server...");
 
     server.on("/", handleRoot);
     server.on("/save", handleSave);
     ElegantOTA.begin(&server);
     server.begin();
 
+    displayBootInfo("Fetching Bus...");
+    delay(500);
+
     if (!isNightMode()) {
-        if (fetchBus()) displayBus();
+        fetchBus(); // Call it regardless of return value
+        displayBus(); // Always display, even if no buses found
     } else {
         displayNightMode();
     }
@@ -430,13 +476,18 @@ void loop() {
 
     if (nightNow != wasNightMode) {
         wasNightMode = nightNow;
-        if (nightNow) displayNightMode();
-        else { setBrightness(config.bri); if (fetchBus()) displayBus(); }
+        if (nightNow) {
+            displayNightMode();
+        } else { 
+            setBrightness(config.bri); 
+            fetchBus(); // Remove the if condition
+            displayBus(); // Always display
+        }
     }
 
     if (!nightNow && millis() - last > 120000) {
         last = millis();
-        if (fetchBus()) displayBus();
+        fetchBus(); // Remove the if condition
+        displayBus(); // Always display
     }
 }
-
