@@ -14,7 +14,7 @@
 // ===================== FÄRGER =====================
 #define DARK_BLUE 0x001F
 #define DELAY_RED 0xF800
-#define YELLOW 0xFFE0
+#define YELLOW 0xE6C0
 #define PURPLE 0xF81F
 
 #define TFT_BL 5
@@ -257,14 +257,14 @@ void displayBus() {
     tft.setTextDatum(MC_DATUM);
 
     if (busInfo2.farAway) {
-        tft.drawString("Next > 6h", 120, 188, 4);  // Moved down 8 pixels
+        tft.drawString("Next > 6h", 120, 188, 4);  // Moved down 8 pixels 188
     } else {
         tft.setFreeFont(&FreeSansBold24pt7b);
-        tft.drawString(busInfo2.departureTime, 120, 180);  // Using free font
+        tft.drawString(busInfo2.departureTime, 120, 170);  // Using free font 180
         // Display bus type
         tft.setTextFont(2);  // Reset to default font
         String busType2 = busInfo2.isSki ? "Bus SKI" : busInfo2.lineNumber;
-        tft.drawString(busType2, 120, 218, 2);  // Moved down 8 pixels
+        tft.drawString(busType2, 120, 210, 2);  // Moved down 8 pixels 218
     }
 }
 
@@ -315,13 +315,13 @@ input[type="checkbox"]{width:20px;height:20px;margin-right:10px;cursor:pointer;}
 </head>
 <body>
 <div class="container">
-<h2>🚌 Dual Bus Display</h2>
+<h2>🚌 Glemmtal buses</h2>
 <div class="status">
 <p>IP Address</p><strong>%IP%</strong>%NIGHT_BADGE%
 </div>
 
 <div class="bus-section">
-<h4>🔴 Upper Display - Station 1%DELAY_BADGE_1%%SKI_BADGE_1%</h4>
+<h4>🔵 Upper Display - Station 1%DELAY_BADGE_1%%SKI_BADGE_1%</h4>
 <p><strong>Next Bus:</strong> %TIME1%</p>
 <p><strong>Line:</strong> %LINE1%</p>
 </div>
@@ -337,14 +337,14 @@ input[type="checkbox"]{width:20px;height:20px;margin-right:10px;cursor:pointer;}
 <label>Station ID</label><input type="text" name="stopid1" value="%STOPID1%" required>
 <a href="https://oebb.macistry.com/api/locations?query=Saalbach" target="_blank" class="helper-link">📍 Find station ID here</a>
 
-<label>Destination Name (partial match, e.g., "Saalbach" or "Schönleiten")</label><input type="text" name="destname1" value="%DESTNAME1%" required>
+<label>Destination Name (partial match, e.g., "Saalbach" is ok)</label><input type="text" name="destname1" value="%DESTNAME1%" required>
 <p style="font-size:12px;color:#666;margin-top:5px;">💡 Enter part of the destination name to filter buses</p>
 
 <h3>🚏 Station 2 (Lower Display)</h3>
 <label>Station ID</label><input type="text" name="stopid2" value="%STOPID2%" required>
 <a href="https://oebb.macistry.com/api/locations?query=Hinterglemm" target="_blank" class="helper-link">📍 Find station ID here</a>
 
-<label>Destination Name (partial match, e.g., "Mitterlengau" or "Zell")</label><input type="text" name="destname2" value="%DESTNAME2%" required>
+<label>Destination Name (partial match, e.g., "Hinterglemm" is ok)</label><input type="text" name="destname2" value="%DESTNAME2%" required>
 <p style="font-size:12px;color:#666;margin-top:5px;">💡 Enter part of the destination name to filter buses</p>
 
 <h3>⚙️ Display Settings</h3>
@@ -353,7 +353,7 @@ input[type="checkbox"]{width:20px;height:20px;margin-right:10px;cursor:pointer;}
 <label>🌙 Night Mode</label>
 <div class="checkbox-wrapper">
 <input type="checkbox" name="night" id="night" value="1" %NIGHT_CHECKED%>
-<label for="night">Enable night mode (turn off display & API calls)</label>
+<label for="night">Enable night mode (turn off display & API calls) Recommended!</label>
 </div>
 
 <div class="time-row">
@@ -370,7 +370,6 @@ input[type="checkbox"]{width:20px;height:20px;margin-right:10px;cursor:pointer;}
 <button type="submit" class="btn">💾 Save Settings</button>
 </form>
 
-<div class="info-text">ℹ️ Uses partial destination name matching (e.g., "Saalbach" matches "Saalbach Schönleitenbahn"). SKI buses = blue/red, other buses = yellow. API checked every 2 minutes.</div>
 <a href="/update" class="link">⚙️ OTA Firmware Update</a>
 </div>
 </body>
