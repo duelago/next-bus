@@ -15,6 +15,7 @@
 #define DARK_BLUE 0x001F
 #define DELAY_RED 0xF800
 #define YELLOW 0xFFE0
+#define PURPLE 0xF81F
 
 #define TFT_BL 5
 TFT_eSPI tft = TFT_eSPI();
@@ -206,7 +207,10 @@ void displayBus() {
     
     // ===== UPPER HALF - Bus 1 =====
     uint32_t bg1;
-    if (busInfo1.isDelayed) {
+    if (busInfo1.departureTime == "No match" || busInfo1.departureTime == "No buses") {
+        // No match or no buses: purple
+        bg1 = PURPLE;
+    } else if (busInfo1.isDelayed) {
         // Any delayed bus: red
         bg1 = DELAY_RED;
     } else if (busInfo1.isSki) {
@@ -234,7 +238,10 @@ void displayBus() {
 
     // ===== LOWER HALF - Bus 2 =====
     uint32_t bg2;
-    if (busInfo2.isDelayed) {
+    if (busInfo2.departureTime == "No match" || busInfo2.departureTime == "No buses") {
+        // No match or no buses: purple
+        bg2 = PURPLE;
+    } else if (busInfo2.isDelayed) {
         // Any delayed bus: red
         bg2 = DELAY_RED;
     } else if (busInfo2.isSki) {
