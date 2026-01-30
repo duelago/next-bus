@@ -50,6 +50,7 @@ struct Config {
     uint8_t night_end_minute;
     uint8_t bri;
     uint8_t duration_mode;
+    bool single_station_mode;  // NEW: true = 1 station, false = 2 stations
 } config;
 
 // ===================== LJUS =====================
@@ -152,6 +153,69 @@ void processDepartures(JsonArray departures, BusData &busInfo, const char* desti
     busInfo.farAway = minsUntilDep > 360;
 }
 
+// NEW: Process departures and get multiple buses for single station mode
+void processDeparturesMultiple(JsonArray departures, BusData &bus1, BusData &bus2, const char* destinationFilter) {
+    if (departures.isNull() || departures.size() == 0) {
+        bus1.departureTime = "No buses";
+        bus1.lineNumber = "";
+        bus1.farAway = false;
+        bus1.isSki = false;
+        bus2.departureTime = "No buses";
+        bus2.lineNumber = "";
+        bus2.farAway = false;
+        bus2.isSki = false;
+        return;
+    }
+
+    // Filter departures by destination name and get first two matches
+    int foundCount = 0;
+    
+    for (JsonObject bus : departures) {
+        String direction = bus["direction"] | "";
+        
+        // Check if the direction contains the destination filter
+        if (destinationFilter[0] == '\0' || direction.indexOf(destinationFilter) >= 0) {
+            BusData* targetBus = (foundCount == 0) ? &bus1 : &bus2;
+            
+            const char* whenStr = bus["when"] | "";
+            targetBus->departureTime = String(whenStr).substring(11, 16);
+            targetBus->destination = bus["direction"] | "";
+            targetBus->lineNumber = bus["line"]["name"] | "";
+            targetBus->isSki = (targetBus->lineNumber == "Bus SKI");
+            
+            int delaySec = bus["delay"] | 0;
+            targetBus->delayMinutes = delaySec / 60;
+            targetBus->isDelayed = delaySec > 60;
+
+            int minsUntilDep = minutesUntil(whenStr);
+            targetBus->farAway = minsUntilDep > 360;
+            
+            foundCount++;
+            if (foundCount >= 2) break;
+        }
+    }
+    
+    // If only one bus found, set second bus to "No buses"
+    if (foundCount == 1) {
+        bus2.departureTime = "No buses";
+        bus2.lineNumber = "";
+        bus2.farAway = false;
+        bus2.isSki = false;
+    }
+    
+    // If no buses found
+    if (foundCount == 0) {
+        bus1.departureTime = "No match";
+        bus1.lineNumber = "";
+        bus1.farAway = false;
+        bus1.isSki = false;
+        bus2.departureTime = "No match";
+        bus2.lineNumber = "";
+        bus2.farAway = false;
+        bus2.isSki = false;
+    }
+}
+
 // ===================== FETCH API =====================
 bool fetchBus(const char* stopId, const char* destinationName, BusData &busInfo, int retries = 2) {
     for (int attempt = 0; attempt < retries; attempt++) {
@@ -202,76 +266,176 @@ bool fetchBus(const char* stopId, const char* destinationName, BusData &busInfo,
     return false;
 }
 
+// NEW: Fetch multiple buses from single station
+bool fetchBusMultiple(const char* stopId, const char* destinationName, BusData &bus1, BusData &bus2, int retries = 2) {
+    for (int attempt = 0; attempt < retries; attempt++) {
+        WiFiClientSecure client;
+        client.setInsecure();
+        client.setTimeout(15000);
+
+        HTTPClient http;
+        http.setTimeout(15000);
+        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+
+        String url =
+            "https://oebb.macistry.com/api/stops/" + String(stopId) +
+            "/departures?bus=true&results=10";
+
+        if (!http.begin(client, url)) {
+            debugMsg = "HTTP begin fail";
+            delay(500);
+            continue;
+        }
+
+        int status = http.GET();
+        httpStatus = status;
+
+        if (status != 200) {
+            debugMsg = "HTTP " + String(status);
+            http.end();
+            delay(500);
+            continue;
+        }
+
+        WiFiClient* stream = http.getStreamPtr();
+
+        DynamicJsonDocument doc(8192);
+        DeserializationError err = deserializeJson(doc, *stream);
+        http.end();
+
+        if (err) {
+            debugMsg = "JSON: " + String(err.c_str());
+            delay(500);
+            continue;
+        }
+
+        JsonArray departures = doc["departures"];
+        processDeparturesMultiple(departures, bus1, bus2, destinationName);
+        return true;
+    }
+    return false;
+}
+
 // ===================== DISPLAY =====================
 void displayBus() {
     tft.fillScreen(TFT_BLACK);
     
-    // ===== UPPER HALF - Bus 1 =====
-    uint32_t bg1;
-    if (busInfo1.departureTime == "No match" || busInfo1.departureTime == "No buses") {
-        // No match or no buses: purple
-        bg1 = PURPLE;
-    } else if (busInfo1.isDelayed && busInfo1.isSki) {
-        // Delayed ski bus: orange
-        bg1 = ORANGE;
-    } else if (busInfo1.isDelayed) {
-        // Delayed regular bus: red
-        bg1 = DELAY_RED;
-    } else if (busInfo1.isSki) {
-        // Ski bus on time: blue
-        bg1 = DARK_BLUE;
+    if (config.single_station_mode) {
+        // ===== SINGLE STATION MODE - FULL SCREEN LAYOUT =====
+        // Both buses displayed vertically on full screen
+        
+        // Determine background color based on most urgent bus (bus 1)
+        uint32_t mainBg;
+        if (busInfo1.departureTime == "No match" || busInfo1.departureTime == "No buses") {
+            mainBg = PURPLE;
+        } else if (busInfo1.isDelayed && busInfo1.isSki) {
+            mainBg = ORANGE;
+        } else if (busInfo1.isDelayed) {
+            mainBg = DELAY_RED;
+        } else if (busInfo1.isSki) {
+            mainBg = DARK_BLUE;
+        } else {
+            mainBg = YELLOW;
+        }
+        
+        // Fill entire screen with main background
+        tft.fillScreen(mainBg);
+        tft.setTextColor(TFT_WHITE, mainBg);
+        tft.setTextDatum(MC_DATUM);
+        
+        // Display first bus (larger, top part)
+        if (busInfo1.farAway) {
+            tft.drawString("Next > 6h", 120, 80, 4);
+        } else if (busInfo1.departureTime == "No match" || busInfo1.departureTime == "No buses") {
+            tft.setTextFont(4);
+            tft.drawString(busInfo1.departureTime, 120, 80, 4);
+        } else {
+            tft.setFreeFont(&FreeSansBold24pt7b);
+            tft.drawString(busInfo1.departureTime, 120, 70);
+            tft.setTextFont(2);
+            String busType1 = busInfo1.isSki ? "Bus SKI" : busInfo1.lineNumber;
+            tft.drawString(busType1, 120, 105, 2);
+        }
+        
+        // Draw separator line
+        tft.drawLine(20, 140, 220, 140, TFT_WHITE);
+        tft.drawLine(20, 141, 220, 141, TFT_WHITE);
+        
+        // Display second bus (smaller, bottom part)
+        tft.setTextFont(2);
+        tft.drawString("Next:", 120, 160, 2);
+        
+        if (busInfo2.farAway) {
+            tft.drawString("> 6h", 120, 185, 4);
+        } else if (busInfo2.departureTime == "No match" || busInfo2.departureTime == "No buses") {
+            tft.setTextFont(2);
+            tft.drawString(busInfo2.departureTime, 120, 185, 2);
+        } else {
+            tft.setTextFont(4);
+            tft.drawString(busInfo2.departureTime, 120, 185, 4);
+            tft.setTextFont(2);
+            String busType2 = busInfo2.isSki ? "Bus SKI" : busInfo2.lineNumber;
+            tft.drawString(busType2, 120, 215, 2);
+        }
+        
     } else {
-        // Non-ski bus on time: yellow
-        bg1 = YELLOW;
-    }
-    
-    tft.fillRect(0, 0, 240, 120, bg1);
-    tft.setTextColor(TFT_WHITE, bg1);  // White text on colored background
-    tft.setTextDatum(MC_DATUM);
+        // ===== TWO STATION MODE - SPLIT SCREEN =====
+        
+        // ===== UPPER HALF - Station 1 =====
+        uint32_t bg1;
+        if (busInfo1.departureTime == "No match" || busInfo1.departureTime == "No buses") {
+            bg1 = PURPLE;
+        } else if (busInfo1.isDelayed && busInfo1.isSki) {
+            bg1 = ORANGE;
+        } else if (busInfo1.isDelayed) {
+            bg1 = DELAY_RED;
+        } else if (busInfo1.isSki) {
+            bg1 = DARK_BLUE;
+        } else {
+            bg1 = YELLOW;
+        }
+        
+        tft.fillRect(0, 0, 240, 120, bg1);
+        tft.setTextColor(TFT_WHITE, bg1);
+        tft.setTextDatum(MC_DATUM);
 
-    if (busInfo1.farAway) {
-        tft.drawString("Next > 6h", 120, 68, 4);  // Moved down 8 pixels
-    } else {
-        tft.setFreeFont(&FreeSansBold24pt7b);
-        tft.drawString(busInfo1.departureTime, 120, 60);  // Using free font
-        // Display bus type
-        tft.setTextFont(2);  // Reset to default font
-        String busType1 = busInfo1.isSki ? "Bus SKI" : busInfo1.lineNumber;
-        tft.drawString(busType1, 120, 98, 2);  // Moved down 8 pixels
-    }
+        if (busInfo1.farAway) {
+            tft.drawString("Next > 6h", 120, 68, 4);
+        } else {
+            tft.setFreeFont(&FreeSansBold24pt7b);
+            tft.drawString(busInfo1.departureTime, 120, 60);
+            tft.setTextFont(2);
+            String busType1 = busInfo1.isSki ? "Bus SKI" : busInfo1.lineNumber;
+            tft.drawString(busType1, 120, 98, 2);
+        }
 
-    // ===== LOWER HALF - Bus 2 =====
-    uint32_t bg2;
-    if (busInfo2.departureTime == "No match" || busInfo2.departureTime == "No buses") {
-        // No match or no buses: purple
-        bg2 = PURPLE;
-    } else if (busInfo2.isDelayed && busInfo2.isSki) {
-        // Delayed ski bus: orange
-        bg2 = ORANGE;
-    } else if (busInfo2.isDelayed) {
-        // Delayed regular bus: red
-        bg2 = DELAY_RED;
-    } else if (busInfo2.isSki) {
-        // Ski bus on time: blue
-        bg2 = DARK_BLUE;
-    } else {
-        // Non-ski bus on time: yellow
-        bg2 = YELLOW;
-    }
-    
-    tft.fillRect(0, 120, 240, 120, bg2);
-    tft.setTextColor(TFT_WHITE, bg2);  // White text on colored background
-    tft.setTextDatum(MC_DATUM);
+        // ===== LOWER HALF - Station 2 =====
+        uint32_t bg2;
+        if (busInfo2.departureTime == "No match" || busInfo2.departureTime == "No buses") {
+            bg2 = PURPLE;
+        } else if (busInfo2.isDelayed && busInfo2.isSki) {
+            bg2 = ORANGE;
+        } else if (busInfo2.isDelayed) {
+            bg2 = DELAY_RED;
+        } else if (busInfo2.isSki) {
+            bg2 = DARK_BLUE;
+        } else {
+            bg2 = YELLOW;
+        }
+        
+        tft.fillRect(0, 120, 240, 120, bg2);
+        tft.setTextColor(TFT_WHITE, bg2);
+        tft.setTextDatum(MC_DATUM);
 
-    if (busInfo2.farAway) {
-        tft.drawString("Next > 6h", 120, 188, 4);  // Moved down 8 pixels 188
-    } else {
-        tft.setFreeFont(&FreeSansBold24pt7b);
-        tft.drawString(busInfo2.departureTime, 120, 170);  // Using free font 180
-        // Display bus type
-        tft.setTextFont(2);  // Reset to default font
-        String busType2 = busInfo2.isSki ? "Bus SKI" : busInfo2.lineNumber;
-        tft.drawString(busType2, 120, 210, 2);  // Moved down 8 pixels 218
+        if (busInfo2.farAway) {
+            tft.drawString("Next > 6h", 120, 188, 4);
+        } else {
+            tft.setFreeFont(&FreeSansBold24pt7b);
+            tft.drawString(busInfo2.departureTime, 120, 170);
+            tft.setTextFont(2);
+            String busType2 = busInfo2.isSki ? "Bus SKI" : busInfo2.lineNumber;
+            tft.drawString(busType2, 120, 210, 2);
+        }
     }
 }
 
@@ -281,7 +445,7 @@ void displayNightMode() {
 }
 
 // ===================== WEB =====================
-const char html[] PROGMEM = R"(
+const char html[] PROGMEM = R"=====(
 <!DOCTYPE html>
 <html>
 <head>
@@ -301,9 +465,10 @@ h3{color:#555;margin-top:25px;margin-bottom:15px;font-size:20px;border-bottom:2p
 .delay-badge{display:inline-block;background:#ff4444;color:white;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;margin-left:10px;}
 .night-badge{display:inline-block;background:#333;color:white;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;margin-left:10px;}
 .ski-badge{display:inline-block;background:#4CAF50;color:white;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;margin-left:10px;}
+.mode-badge{display:inline-block;background:#667eea;color:white;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;margin-left:10px;}
 label{display:block;margin-top:15px;margin-bottom:5px;color:#333;font-weight:600;font-size:14px;}
-input[type="text"],input[type="number"],input[type="time"]{width:100%;padding:12px;border:2px solid #e0e0e0;border-radius:8px;font-size:16px;transition:border 0.3s;}
-input[type="text"]:focus,input[type="number"]:focus,input[type="time"]:focus{outline:none;border-color:#667eea;}
+input[type="text"],input[type="number"],input[type="time"],select{width:100%;padding:12px;border:2px solid #e0e0e0;border-radius:8px;font-size:16px;transition:border 0.3s;}
+input[type="text"]:focus,input[type="number"]:focus,input[type="time"]:focus,select:focus{outline:none;border-color:#667eea;}
 .checkbox-wrapper{display:flex;align-items:center;padding:12px;background:#f9f9f9;border-radius:8px;margin:10px 0;}
 input[type="checkbox"]{width:20px;height:20px;margin-right:10px;cursor:pointer;}
 .checkbox-wrapper label{margin:0;cursor:pointer;font-weight:500;}
@@ -317,50 +482,72 @@ input[type="checkbox"]{width:20px;height:20px;margin-right:10px;cursor:pointer;}
 .helper-link{display:inline-block;margin-top:5px;margin-bottom:10px;color:#667eea;text-decoration:none;font-size:13px;font-weight:500;}
 .helper-link:hover{text-decoration:underline;}
 .info-text{font-size:13px;color:#666;margin-top:15px;padding:10px;background:#f0f0f0;border-radius:6px;}
+.station2-section{%STATION2_DISPLAY%}
 @media(max-width:600px){.container{padding:20px;}h2{font-size:24px;}}
 </style>
+<script>
+function toggleStationMode() {
+    var mode = document.getElementById('stationmode').value;
+    var station2 = document.getElementById('station2section');
+    if (mode === '1') {
+        station2.style.display = 'none';
+    } else {
+        station2.style.display = 'block';
+    }
+}
+</script>
 </head>
 <body>
 <div class="container">
-<h2>🚌 Glemmtal buses</h2>
+<h2>Glemmtal buses</h2>
 <div class="status">
-<p>IP Address</p><strong>%IP%</strong>%NIGHT_BADGE%
+<p>IP Address</p><strong>%IP%</strong>%NIGHT_BADGE%%MODE_BADGE%
 </div>
 
 <div class="bus-section">
-<h4>🔵 Upper Display - Station 1%DELAY_BADGE_1%%SKI_BADGE_1%</h4>
+<h4>%BUS1_LABEL%%DELAY_BADGE_1%%SKI_BADGE_1%</h4>
 <p><strong>Next Bus:</strong> %TIME1%</p>
 <p><strong>Line:</strong> %LINE1%</p>
 </div>
 
 <div class="bus-section">
-<h4>🔵 Lower Display - Station 2%DELAY_BADGE_2%%SKI_BADGE_2%</h4>
+<h4>%BUS2_LABEL%%DELAY_BADGE_2%%SKI_BADGE_2%</h4>
 <p><strong>Next Bus:</strong> %TIME2%</p>
 <p><strong>Line:</strong> %LINE2%</p>
 </div>
 
 <form action="/save">
-<h3>🚏 Station 1 (Upper Display)</h3>
+<h3>Display Mode</h3>
+<label>Station Mode</label>
+<select name="stationmode" id="stationmode" onchange="toggleStationMode()" required>
+<option value="2" %MODE2_SELECTED%>2 Stations (split screen)</option>
+<option value="1" %MODE1_SELECTED%>1 Station </option>
+</select>
+<p style="font-size:12px;color:#666;margin-top:5px;">1 Station mode shows two consecutive buses from Station 1 on full screen</p>
+
+<h3>Station 1 (Upper Display)</h3>
 <label>Station ID</label><input type="text" name="stopid1" value="%STOPID1%" required>
-<a href="https://oebb.macistry.com/api/locations?query=Saalbach" target="_blank" class="helper-link">📍 Find station ID here</a>
+<a href="https://oebb.macistry.com/api/locations?query=Saalbach" target="_blank" class="helper-link">Find station ID here</a>
 
 <label>Destination Name (partial match, e.g., "Saalbach" is ok)</label><input type="text" name="destname1" value="%DESTNAME1%" required>
-<p style="font-size:12px;color:#666;margin-top:5px;">💡 Enter part of the destination name to filter buses</p>
+<p style="font-size:12px;color:#666;margin-top:5px;">Enter part of the destination name to filter buses</p>
 
-<h3>🚏 Station 2 (Lower Display)</h3>
+<div id="station2section" class="station2-section">
+<h3>Station 2 (Lower Display)</h3>
 <label>Station ID</label><input type="text" name="stopid2" value="%STOPID2%" required>
-<a href="https://oebb.macistry.com/api/locations?query=Hinterglemm" target="_blank" class="helper-link">📍 Find station ID here</a>
+<a href="https://oebb.macistry.com/api/locations?query=Hinterglemm" target="_blank" class="helper-link">Find station ID here</a>
 
 <label>Destination Name (partial match, e.g., "Hinterglemm" is ok)</label><input type="text" name="destname2" value="%DESTNAME2%" required>
-<p style="font-size:12px;color:#666;margin-top:5px;">💡 Enter part of the destination name to filter buses</p>
+<p style="font-size:12px;color:#666;margin-top:5px;">Enter part of the destination name to filter buses</p>
+</div>
 
-<h3>⚙️ Display Settings</h3>
+<h3>Display Settings</h3>
 <label>Brightness (20-255)</label><input type="number" name="bri" value="%BRI%" min="20" max="255" required>
 
-<label>🌙 Night Mode</label>
+<label>Night Mode</label>
 <div class="checkbox-wrapper">
 <input type="checkbox" name="night" id="night" value="1" %NIGHT_CHECKED%>
-<label for="night">Enable night mode (turn off display & API calls) Recommended!</label>
+<label for="night">Enable night mode (turn off display and API calls) Recommended!</label>
 </div>
 
 <div class="time-row">
@@ -374,19 +561,35 @@ input[type="checkbox"]{width:20px;height:20px;margin-right:10px;cursor:pointer;}
 </div>
 </div>
 
-<button type="submit" class="btn">💾 Save Settings</button>
+<button type="submit" class="btn">Save Settings</button>
 </form>
 
-<a href="/update" class="link">⚙️ OTA Firmware Update</a>
+<a href="/update" class="link">OTA Firmware Update</a>
 </div>
+<script>toggleStationMode();</script>
 </body>
 </html>
-)";
+)=====";
 
 // ===================== HANDLERS =====================
 void handleRoot() {
     String page = FPSTR(html);
     page.replace("%IP%", WiFi.localIP().toString());
+    
+    // Display mode badge and labels
+    if (config.single_station_mode) {
+        page.replace("%MODE_BADGE%", "<span class=\"mode-badge\">📺 1 STATION</span>");
+        page.replace("%BUS1_LABEL%", "Next Bus (Station 1)");
+        page.replace("%BUS2_LABEL%", "Following Bus (Station 1)");
+        page.replace("%MODE1_SELECTED%", "selected");
+        page.replace("%MODE2_SELECTED%", "");
+    } else {
+        page.replace("%MODE_BADGE%", "<span class=\"mode-badge\">📺 2 STATIONS</span>");
+        page.replace("%BUS1_LABEL%", "Upper Display - Station 1");
+        page.replace("%BUS2_LABEL%", "Lower Display - Station 2");
+        page.replace("%MODE1_SELECTED%", "");
+        page.replace("%MODE2_SELECTED%", "selected");
+    }
     
     // Bus 1 info
     page.replace("%TIME1%", busInfo1.departureTime);
@@ -414,6 +617,13 @@ void handleRoot() {
         page.replace("%NIGHT_BADGE%", "<span class=\"night-badge\">🌙 NIGHT MODE</span>");
     } else {
         page.replace("%NIGHT_BADGE%", "");
+    }
+
+    // Control Station 2 visibility
+    if (config.single_station_mode) {
+        page.replace("%STATION2_DISPLAY%", "display:none;");
+    } else {
+        page.replace("%STATION2_DISPLAY%", "");
     }
 
     // Delay badges
@@ -452,6 +662,7 @@ void handleSave() {
     strlcpy(config.destination_name_2, server.arg("destname2").c_str(), sizeof(config.destination_name_2));
     config.bri = server.arg("bri").toInt();
     config.night_mode_enabled = server.hasArg("night");
+    config.single_station_mode = (server.arg("stationmode") == "1");
 
     String nightStart = server.arg("nightstart");
     config.night_start_hour = nightStart.substring(0, 2).toInt();
@@ -492,6 +703,7 @@ void setup() {
         config.night_start_minute = 0;
         config.night_end_hour = 6;
         config.night_end_minute = 0;
+        config.single_station_mode = false;  // Default to 2 station mode
         EEPROM.put(0, config);
         EEPROM.commit();
     }
@@ -561,8 +773,14 @@ void setup() {
     delay(500);
 
     if (!isNightMode()) {
-        fetchBus(config.stop_id_1, config.destination_name_1, busInfo1);
-        fetchBus(config.stop_id_2, config.destination_name_2, busInfo2);
+        if (config.single_station_mode) {
+            // Fetch two buses from station 1
+            fetchBusMultiple(config.stop_id_1, config.destination_name_1, busInfo1, busInfo2);
+        } else {
+            // Fetch one bus from each station
+            fetchBus(config.stop_id_1, config.destination_name_1, busInfo1);
+            fetchBus(config.stop_id_2, config.destination_name_2, busInfo2);
+        }
         displayBus();
     } else {
         displayNightMode();
@@ -584,17 +802,25 @@ void loop() {
         if (nightNow) {
             displayNightMode();
         } else { 
-            setBrightness(config.bri); 
-            fetchBus(config.stop_id_1, config.destination_name_1, busInfo1);
-            fetchBus(config.stop_id_2, config.destination_name_2, busInfo2);
+            setBrightness(config.bri);
+            if (config.single_station_mode) {
+                fetchBusMultiple(config.stop_id_1, config.destination_name_1, busInfo1, busInfo2);
+            } else {
+                fetchBus(config.stop_id_1, config.destination_name_1, busInfo1);
+                fetchBus(config.stop_id_2, config.destination_name_2, busInfo2);
+            }
             displayBus();
         }
     }
 
     if (!nightNow && millis() - last > 120000) {
         last = millis();
-        fetchBus(config.stop_id_1, config.destination_name_1, busInfo1);
-        fetchBus(config.stop_id_2, config.destination_name_2, busInfo2);
+        if (config.single_station_mode) {
+            fetchBusMultiple(config.stop_id_1, config.destination_name_1, busInfo1, busInfo2);
+        } else {
+            fetchBus(config.stop_id_1, config.destination_name_1, busInfo1);
+            fetchBus(config.stop_id_2, config.destination_name_2, busInfo2);
+        }
         displayBus();
     }
 }
