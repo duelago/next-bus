@@ -14,7 +14,7 @@
 // ===================== FÄRGER =====================
 #define DARK_BLUE 0x001F
 #define DELAY_RED 0xF800
-#define YELLOW 0xE6C0
+#define YELLOW 0xCD80
 #define PURPLE 0xF81F
 
 #define TFT_BL 5
