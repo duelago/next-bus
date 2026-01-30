@@ -16,6 +16,7 @@
 #define DELAY_RED 0xF800
 #define YELLOW 0xCD80
 #define PURPLE 0xF81F
+#define ORANGE 0xFD20    // Orange färg för försenade SKI-bussar
 
 #define TFT_BL 5
 TFT_eSPI tft = TFT_eSPI();
@@ -210,8 +211,11 @@ void displayBus() {
     if (busInfo1.departureTime == "No match" || busInfo1.departureTime == "No buses") {
         // No match or no buses: purple
         bg1 = PURPLE;
+    } else if (busInfo1.isDelayed && busInfo1.isSki) {
+        // Delayed ski bus: orange
+        bg1 = ORANGE;
     } else if (busInfo1.isDelayed) {
-        // Any delayed bus: red
+        // Delayed regular bus: red
         bg1 = DELAY_RED;
     } else if (busInfo1.isSki) {
         // Ski bus on time: blue
@@ -241,8 +245,11 @@ void displayBus() {
     if (busInfo2.departureTime == "No match" || busInfo2.departureTime == "No buses") {
         // No match or no buses: purple
         bg2 = PURPLE;
+    } else if (busInfo2.isDelayed && busInfo2.isSki) {
+        // Delayed ski bus: orange
+        bg2 = ORANGE;
     } else if (busInfo2.isDelayed) {
-        // Any delayed bus: red
+        // Delayed regular bus: red
         bg2 = DELAY_RED;
     } else if (busInfo2.isSki) {
         // Ski bus on time: blue
