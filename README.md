@@ -23,3 +23,7 @@ Därefter skriver du in din stations <b>HållplatsID</b> som är ett nummer. Jag
   Mjukvaran visar när nästa buss även vilken linje som nästa ankommande buss trafikerar (150 i exemplet här)<br>
 Nattläget sparar på API-anrop och stänger ner skärmen så den blir svart. Det går fortfarande att nå webbinterfacet.<p></p>
 <img width="907" height="960" alt="vellinge" src="https://github.com/user-attachments/assets/a25df43a-ed15-484c-9ec5-5721656abf2e" />
+
+<h1>Om det strular med OTA...</h1>
+![geek](https://github.com/user-attachments/assets/525d21c5-4a10-4020-a156-df318ed0eaa4)
+
