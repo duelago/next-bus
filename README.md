@@ -25,5 +25,5 @@ Nattläget sparar på API-anrop och stänger ner skärmen så den blir svart. De
 <img width="907" height="960" alt="vellinge" src="https://github.com/user-attachments/assets/a25df43a-ed15-484c-9ec5-5721656abf2e" />
 
 <h1>Om det strular med OTA...</h1>
-![geek](https://github.com/user-attachments/assets/525d21c5-4a10-4020-a156-df318ed0eaa4)
+![geek](https://github.com/user-attachments/assets/13e86c91-7089-4afd-bce7-e59b7eb6f8fe)
 
